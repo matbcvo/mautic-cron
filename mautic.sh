@@ -1,16 +1,39 @@
 #!/bin/bash
 
 LOGGING=1
-PHP_PATH="/opt/plesk/php/8.0/bin/php"
-SCRIPT_NAME="mautic-name"
-LOCKFILE="/tmp/${SCRIPT_NAME}.lock"
+PHP_PATH="/opt/plesk/php/8.2/bin/php"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+SCRIPT_NAME="$(basename "$0")"
+UNIQUE_SCRIPT_NAME="$(echo "$SCRIPT_DIR/$SCRIPT_NAME" | md5sum | cut -d' ' -f1)"
+LOCKFILE="/tmp/${UNIQUE_SCRIPT_NAME}.lock"
+LOG_FILE="$SCRIPT_DIR/logs/mautic_log"
+COMMANDS=(
+    "mautic:segments:update --batch-limit=100"
+    "mautic:campaigns:update --batch-limit=100"
+    "mautic:campaigns:trigger"
+    "messenger:consume email --time-limit=50"
+)
 
-if [ -e "$LOCKFILE" ]; then
-    echo "Previous instance of $SCRIPT_NAME is still running."
-    exit 1
-fi
+log_message() {
+    if [[ $LOGGING -eq 1 ]]
+    then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $SCRIPT_NAME: $1" >> "$LOG_FILE"
+    fi
+}
 
-touch "$LOCKFILE"
+run_command() {
+    local COMMAND="$1"
+    local START_TIME=$(date +%s)
+    log_message "Starting $COMMAND"
+    
+    if $PHP_PATH httpdocs/bin/console $COMMAND --no-interaction --no-ansi; then
+        local END_TIME=$(date +%s)
+        log_message "Completed $COMMAND in $((END_TIME - START_TIME)) seconds"
+    else
+        log_message "Error: $COMMAND failed"
+        cleanup
+    fi
+}
 
 cleanup() {
     rm -f "$LOCKFILE"
@@ -19,63 +42,24 @@ cleanup() {
 
 trap 'cleanup' INT TERM ERR
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-LOG_FILE="$SCRIPT_DIR/logs/mautic_log"
+if [ -e "$LOCKFILE" ]; then
+    echo "Previous instance of $SCRIPT_NAME is still running."
+    exit 1
+fi
+
+touch "$LOCKFILE"
+
 START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-
-log_message() {
-    if [[ $LOGGING -eq 1 ]]
-    then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $SCRIPT_NAME: $1" >> $LOG_FILE
-    fi
-}
-
 log_message "Script started at: $START_TIME"
-
 TOTAL_START=$(date +%s)
 
-START=$(date +%s)
-$PHP_PATH httpdocs/bin/console mautic:broadcasts:send --limit=100 --no-interaction --no-ansi
-END=$(date +%s)
-log_message "Completed mautic:broadcasts:send within $((END-START)) seconds"
-
-START=$(date +%s)
-$PHP_PATH httpdocs/bin/console mautic:emails:send --message-limit=50 --no-interaction --no-ansi
-END=$(date +%s)
-log_message "Completed mautic:emails:send within $((END-START)) seconds"
-
-START=$(date +%s)
-$PHP_PATH httpdocs/bin/console mautic:segments:update --batch-limit=100 --no-interaction --no-ansi
-END=$(date +%s)
-log_message "Completed mautic:segments:update within $((END-START)) seconds"
-
-START=$(date +%s)
-$PHP_PATH httpdocs/bin/console mautic:campaigns:update --batch-limit=100 --no-interaction --no-ansi
-END=$(date +%s)
-log_message "Completed mautic:campaigns:update within $((END-START)) seconds"
-
-START=$(date +%s)
-$PHP_PATH httpdocs/bin/console mautic:campaigns:trigger --no-interaction --no-ansi
-END=$(date +%s)
-log_message "Completed mautic:campaigns:trigger within $((END-START)) seconds"
-
-START=$(date +%s)
-$PHP_PATH httpdocs/bin/console mautic:import --limit=500 --no-interaction --no-ansi
-END=$(date +%s)
-log_message "Completed mautic:import within $((END-START)) seconds"
-
-# START=$(date +%s)
-# $PHP_PATH httpdocs/bin/console mautic:webhooks:process --no-interaction --no-ansi
-# END=$(date +%s)
-# log_message "Completed mautic:webhooks:process within $((END-START)) seconds"
-
-# START=$(date +%s)
-# $PHP_PATH httpdocs/bin/console mautic:reports:scheduler --no-interaction --no-ansi
-# END=$(date +%s)
-# log_message "Completed mautic:reports:scheduler within $((END-START)) seconds"
+for COMMAND in "${COMMANDS[@]}"; do
+    run_command "$COMMAND"
+done
 
 TOTAL_END=$(date +%s)
 TOTAL_TIME=$((TOTAL_END-TOTAL_START))
 log_message "Finished within $TOTAL_TIME seconds"
 
 rm -f "$LOCKFILE"
+exit 0
