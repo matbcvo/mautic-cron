@@ -10,8 +10,11 @@ LOG_FILE="$SCRIPT_DIR/logs/mautic_log"
 COMMANDS=(
     "mautic:segments:update --batch-limit=100"
     "mautic:campaigns:update --batch-limit=100"
-    "mautic:campaigns:trigger"
+    "mautic:campaigns:trigger --batch-limit=100"
     "messenger:consume email --time-limit=50"
+    # "mautic:import --limit=100"
+    # "mautic:webhooks:process"
+    # "mautic:reports:scheduler"
 )
 
 log_message() {
