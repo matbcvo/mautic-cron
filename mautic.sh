@@ -2,6 +2,7 @@
 
 LOGGING=1
 PHP_PATH="/opt/plesk/php/8.2/bin/php"
+MAUTIC_CONSOLE_PATH="httpdocs/bin/console"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 SCRIPT_NAME="$(basename "$0")"
 UNIQUE_SCRIPT_NAME="$(echo "$SCRIPT_DIR/$SCRIPT_NAME" | md5sum | cut -d' ' -f1)"
@@ -29,7 +30,7 @@ run_command() {
     local START_TIME=$(date +%s)
     log_message "Starting $COMMAND"
     
-    if $PHP_PATH httpdocs/bin/console $COMMAND --no-interaction --no-ansi; then
+    if $PHP_PATH $MAUTIC_CONSOLE_PATH $COMMAND --no-interaction --no-ansi; then
         local END_TIME=$(date +%s)
         log_message "Completed $COMMAND in $((END_TIME - START_TIME)) seconds"
     else
